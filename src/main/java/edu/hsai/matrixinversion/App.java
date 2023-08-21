@@ -26,7 +26,7 @@ public class App {
         startTime = System.currentTimeMillis();
         inverseMatrix = ConcurrentMatrixInversion.inverse(matrix, threadsCount);
         elapsedTime = System.currentTimeMillis() - startTime;
-        System.out.printf("Elapsed time for concurrent inversion: %d ms%n", elapsedTime);
+        System.out.printf("Elapsed time for concurrent inversion using %d threads: %d ms%n", threadsCount, elapsedTime);
 
 //        for (var line : inverseMatrix) {
 //            for (var el : line) {
