@@ -1,10 +1,14 @@
 package edu.hsai.matrixinversion;
 
-import java.util.concurrent.CountDownLatch;
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.concurrent.*;
 
 public class ConcurrentMatrixInversion {
     // Method for calculating the inverse matrix using the Gauss-Jordan elimination
-    public static double[][] inverse(double[][] matrix, int threadCount) throws InterruptedException {
+    public static double[][] inverse(double[][] matrix, int threadCount) {
+        ExecutorService executorService = Executors.newFixedThreadPool(threadCount);
+
         int n = matrix.length;
 
         // Create the augmented matrix [A | I]
@@ -12,74 +16,54 @@ public class ConcurrentMatrixInversion {
 
         // Apply elementary row operations to obtain the identity matrix on the left
         for (int i = 0; i < n; i++) {
-            final double diagonalValue = augmentedMatrix[i][i];
+            double pivot = augmentedMatrix[i][i];
 
             // Divide the current row by the value of the pivot element
-            for (int j = 0; j < 2 * n; j += threadCount) {
-                CountDownLatch latch = new CountDownLatch(threadCount);
+            var futureDivisions = new LinkedList<Future<?>>();
 
-                for (int threadId = 0; threadId < threadCount; threadId++) {
-                    final int row = i;
-                    final int col = j + threadId;
-                    new Thread(() -> {
-                        if (col >= 2 * n) {
-                            latch.countDown();
-                            return;
-                        }
+            for (int j = 0; j < 2 * n; j++) {
+                final int finalI = i;
+                final int finalJ = j;
 
-                        augmentedMatrix[row][col] /= diagonalValue;
-                        latch.countDown();
-                    }).start();
-                }
-
-                latch.await();
+                futureDivisions
+                        .add(executorService.submit(() -> {
+                    augmentedMatrix[finalI][finalJ] /= pivot;
+                }));
             }
 
-            // Save factors for further subtraction
-            final double[] factors = new double[n];
-            for (int j = 0; j < n; j += threadCount) {
-                CountDownLatch latch = new CountDownLatch(threadCount);
-
-                for (int threadId = 0; threadId < threadCount; threadId++) {
-                    final int index = j + threadId;
-                    final int finalI = i;
-
-                    new Thread(() -> {
-                        if (index >= n) {
-                            latch.countDown();
-                            return;
-                        }
-
-                        factors[index] = augmentedMatrix[index][finalI];
-                        latch.countDown();
-                    }).start();
+            futureDivisions.forEach(future -> {
+                try {
+                    future.get();
+                } catch (InterruptedException | ExecutionException e) {
+                    throw new RuntimeException(e);
                 }
-
-                latch.await();
-            }
+            });
 
             // Subtract the current row from the other rows
-            for (int j = 0; j < 2 * n * n; j += threadCount) {
-                CountDownLatch latch = new CountDownLatch(threadCount);
+            var futureSubtractions = new ArrayList<Future<?>>();
 
-                for (int threadId = 0; threadId < threadCount; threadId++) {
-                    final int row = (j + threadId) / (2 * n);
-                    final int col = (j + threadId) % (2 * n);
-                    final int finalI = i;
-
-                    new Thread(() -> {
-                        if (row == finalI || row >= n) {
-                            latch.countDown();
-                            return;
-                        }
-
-                        augmentedMatrix[row][col] -= factors[row] * augmentedMatrix[finalI][col];
-                        latch.countDown();
-                    }).start();
+            for (int k = 0; k < n; k++) {
+                if (k != i) {
+                    double factor = augmentedMatrix[k][i];
+                    for (int j = 0; j < 2 * n; j++) {
+                        final int finalI1 = i;
+                        final int finalK = k;
+                        final int finalJ = j;
+                        futureSubtractions
+                                .add(executorService.submit(() -> {
+                                    augmentedMatrix[finalK][finalJ] -= factor * augmentedMatrix[finalI1][finalJ];
+                                }));
+                    }
                 }
-
-                latch.await();
             }
+
+            futureSubtractions.forEach(future -> {
+                try {
+                    future.get();
+                } catch (InterruptedException | ExecutionException e) {
+                    throw new RuntimeException(e);
+                }
+            });
         }
 
         // Extract the right part of the augmented matrix, which represents the inverse matrix
