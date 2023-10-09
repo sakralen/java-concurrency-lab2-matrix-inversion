@@ -66,6 +66,8 @@ public class ConcurrentMatrixInversion {
             });
         }
 
+        executorService.shutdown();
+
         // Extract the right part of the augmented matrix, which represents the inverse matrix
         return extractInverseMatrix(augmentedMatrix);
     }
